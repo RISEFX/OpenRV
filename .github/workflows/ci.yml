@@ -1,27 +1,6 @@
 name: OpenRV
 
 on:
-  # push:
-  #   # Skip jobs when only those files are changed.
-  #   paths-ignore:
-  #     - '**.md'
-  #     - 'LICENSE'
-  #     - 'Notice.txt'
-  #     - 'rvcmds.sh'
-
-  # pull_request:
-  #   # Skip jobs when only those files are changed.
-  #   paths-ignore:
-  #     - '**.md'
-  #     - 'LICENSE'
-  #     - 'Notice.txt'
-  #     - 'rvcmds.sh'
-
-  # schedule:
-  #   # Midnight build every day
-    # - cron: "0 0 * * *"
-
-  # This allows manual triggering of the workflow from the web
   workflow_dispatch:
     inputs:
       SKIP_DEPS_CACHE:
@@ -83,7 +62,7 @@ jobs:
           # should be run twice
           $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
           $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
-          
+
       - name: Set up MSVC ${{ matrix.msvc-compiler }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -117,7 +96,7 @@ jobs:
             patch
             unzip
             zip
-    
+
       - name: Activate Python ${{ matrix.python-version }}
         uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
         with:
@@ -138,7 +117,7 @@ jobs:
         if: steps.windows-cmake-cache.outputs.cache-hit != 'true'
         run: |
           choco install cmake --version=${{ matrix.cmake-version }}
-          
+
       - name: Set PATH environment variable
         run: |
           echo "export PATH=\"/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.11.9/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
@@ -157,7 +136,7 @@ jobs:
           which python3
           which cmake
         shell: msys2 {0}
-    
+
       - name: Prepare Qt folder
         run: |
           mkdir -p /c/qt
@@ -211,9 +190,10 @@ jobs:
       - name: Configure OpenRV
         run: |
           export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }}
+          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;aac_at;aac_fixed;aac_latm;bink;binkaudio_dct;binkaudio_rdft;dnxhd;dvvideo;prores;qtrle;vp9;vp9_cuvid;vp9_mediacodec;vp9_qsv;vp9_rkmpp;vp9_v4l2m2m" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;aac_mf;dnxhd;dvvideo;prores;qtrle;vp9_qsv;vp9_vaapi"
+
         shell: msys2 {0}
-          
+
       - name: Build OpenRV dependencies
         if: steps.cmake-dependencies.outputs.cache-hit != 'true'
         run: |
@@ -238,13 +218,8 @@ jobs:
           cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
         shell: msys2 {0}
 
-      - name: Create zip file of OpenRV installation
-        run: |
-          zip -r OpenRV_${{ matrix.build-type }}.zip $(pwd)/_install/
-        shell: msys2 {0}
-
-      - name: Upload OpenRV zip file
+      - name: Upload OpenRV artifact file
         uses: actions/upload-artifact@v3
         with:
           name: OpenRV-${{ matrix.build-type }}-${{ matrix.arch-type }}
-          path: OpenRV_${{ matrix.build-type }}.zip
+          path: _install
