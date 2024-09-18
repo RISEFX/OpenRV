@@ -223,7 +223,7 @@ jobs:
 
       - name: Get the release file name
         run: |
-          echo "OPENRV_RELEASE_FILENAME=OpenRV_2.1.0_$(git rev-parse --short HEAD)_${{ matrix.os }}_${{ matrix.arch-type }}_${{ matrix.vfx-platform }}_${{ matrix.build-type }}" >> $GITHUB_ENV
+          echo "OPENRV_RELEASE_FILENAME=OpenRV_${{  github.ref_name }}_$(git rev-parse --short HEAD)_${{ matrix.os }}_${{ matrix.arch-type }}_${{ matrix.vfx-platform }}_${{ matrix.build-type }}" >> $GITHUB_ENV
 
       - name: Create zip file of OpenRV installation
         run: |
