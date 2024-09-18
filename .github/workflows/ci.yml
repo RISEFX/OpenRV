@@ -7,6 +7,9 @@ on:
         description: 'Skip dependencies caching'
         required: true
         default: 'false'
+  push:
+    tags:
+      - 'v*.*.*'
 
 env:
   SKIP_DEPS_CACHE: 'false'
@@ -31,7 +34,7 @@ jobs:
             arch-type: "x86_64"
             build-type: "Release"
             qt-version: "5.15.2"
-            python-version: "3.11"
+            python-version: "3.10"
             cmake-version: "3.29.8"
             vfx-platform: "CY2023"
             msvc-component: "14.40.17.10.x86.x64"
@@ -218,8 +221,24 @@ jobs:
           cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
         shell: msys2 {0}
 
+      - name: Get the release file name
+        run: |
+          echo "OPENRV_RELEASE_FILENAME=OpenRV_2.1.0_$(git rev-parse --short HEAD)_${{ matrix.os }}_${{ matrix.arch-type }}_${{ matrix.vfx-platform }}_${{ matrix.build-type }}" >> $GITHUB_ENV
+
+      - name: Create zip file of OpenRV installation
+        run: |
+          zip -r ${OPENRV_RELEASE_FILENAME}.zip _install/
+
       - name: Upload OpenRV artifact file
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: OpenRV-${{ matrix.build-type }}-${{ matrix.arch-type }}
-          path: _install
+          name: ${OPENRV_RELEASE_FILENAME}
+          path: ${OPENRV_RELEASE_FILENAME}.zip
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: ${OPENRV_RELEASE_FILENAME}.zip
+          allowUpdates: true
+          makeLatest: true
