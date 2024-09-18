@@ -224,10 +224,12 @@ jobs:
       - name: Get the release file name
         run: |
           echo "OPENRV_RELEASE_FILENAME=OpenRV_${{  github.ref_name }}_$(git rev-parse --short HEAD)_${{ matrix.os }}_${{ matrix.arch-type }}_${{ matrix.vfx-platform }}_${{ matrix.build-type }}" >> $GITHUB_ENV
+        shell: msys2 {0}
 
       - name: Create zip file of OpenRV installation
         run: |
           zip -r ${OPENRV_RELEASE_FILENAME}.zip _install/
+        shell: msys2 {0}
 
       - name: Upload OpenRV artifact file
         uses: actions/upload-artifact@v4
