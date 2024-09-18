@@ -228,19 +228,19 @@ jobs:
 
       - name: Create zip file of OpenRV installation
         run: |
-          zip -r ${OPENRV_RELEASE_FILENAME}.zip _install/
+          zip -r ${{ env.OPENRV_RELEASE_FILENAME }}.zip _install/
         shell: msys2 {0}
 
       - name: Upload OpenRV artifact file
         uses: actions/upload-artifact@v4
         with:
-          name: ${OPENRV_RELEASE_FILENAME}
-          path: ${OPENRV_RELEASE_FILENAME}.zip
+          name: ${{ env.OPENRV_RELEASE_FILENAME }}
+          path: ${{ env.OPENRV_RELEASE_FILENAME }}.zip
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: ncipollo/release-action@v1
         with:
-          artifacts: ${OPENRV_RELEASE_FILENAME}.zip
+          artifacts: ${{ env.OPENRV_RELEASE_FILENAME }}.zip
           allowUpdates: true
           makeLatest: true
