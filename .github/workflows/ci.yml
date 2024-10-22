@@ -228,7 +228,8 @@ jobs:
 
       - name: Create zip file of OpenRV installation
         run: |
-          zip -r ${{ env.OPENRV_RELEASE_FILENAME }}.zip _install/
+          mv _install ${{ env.OPENRV_RELEASE_FILENAME }}
+          zip -r ${{ env.OPENRV_RELEASE_FILENAME }}.zip ${{ env.OPENRV_RELEASE_FILENAME }}
         shell: msys2 {0}
 
       - name: Upload OpenRV artifact file
