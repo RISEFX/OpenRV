@@ -43,12 +43,48 @@ LIST(APPEND _byproducts ${_byprojects_copy})
 
 # The '_configure_options' list gets reset and initialized in 'RV_CREATE_STANDARD_DEPS_VARIABLES'
 LIST(APPEND _configure_options "-DBUILD_TESTING=OFF")
-LIST(APPEND _configure_options "-DUSE_PYTHON=0") # this on would requireextra pybind11 package
-LIST(APPEND _configure_options "-DUSE_OCIO=0")
+LIST(APPEND _configure_options "-DUSE_PYTHON=ON")
+LIST(APPEND _configure_options "-DUSE_OCIO=ON")
+LIST(APPEND _configure_options "-DOpenColorIO_ROOT=${RV_DEPS_OCIO_ROOT_DIR}")
 LIST(APPEND _configure_options "-DUSE_FREETYPE=0")
 LIST(APPEND _configure_options "-DUSE_GIF=OFF")
 
 LIST(APPEND _configure_options "-DBoost_ROOT=${RV_DEPS_BOOST_ROOT_DIR}")
+
+# Python bindings: build against RV's Python, never a system one.
+SET(_oiio_python_root
+    "${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install"
+)
+LIST(APPEND _configure_options "-DPYTHON_VERSION=${RV_DEPS_PYTHON_VERSION_SHORT}")
+LIST(APPEND _configure_options "-DPython_ROOT_DIR=${_oiio_python_root}")
+LIST(APPEND _configure_options "-DPython_FIND_STRATEGY=LOCATION")
+LIST(APPEND _configure_options "-DPython_EXECUTABLE=${RV_DEPS_PYTHON3_EXECUTABLE}")
+IF(RV_TARGET_WINDOWS)
+  STRING(REPLACE "." "" _oiio_python_version_no_dot ${RV_DEPS_PYTHON_VERSION_SHORT})
+  LIST(APPEND _configure_options "-DPython_LIBRARY=${_oiio_python_root}/bin/python${_oiio_python_version_no_dot}.lib")
+  LIST(APPEND _configure_options "-DPython_INCLUDE_DIR=${_oiio_python_root}/include")
+  SET(_oiio_python_site_dir
+      "${_lib_dir}/site-packages/OpenImageIO"
+  )
+ELSE()
+  SET(_oiio_python_site_dir
+      "${_lib_dir}/python${RV_DEPS_PYTHON_VERSION_SHORT}/site-packages/OpenImageIO"
+  )
+ENDIF()
+LIST(APPEND _configure_options "-DPYTHON_SITE_DIR=${_oiio_python_site_dir}")
+
+# OIIO 2.4 cannot download pybind11; it comes from the build Python's requirements.txt.
+EXECUTE_PROCESS(
+  COMMAND python3 -m pybind11 --cmakedir
+  OUTPUT_VARIABLE _pybind11_dir
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  RESULT_VARIABLE _pybind11_result
+)
+IF(NOT _pybind11_result EQUAL 0)
+  MESSAGE(FATAL_ERROR "OIIO: pybind11 not found in the build Python; install requirements.txt.")
+ENDIF()
+LIST(APPEND _configure_options "-Dpybind11_DIR=${_pybind11_dir}")
+
 LIST(APPEND _configure_options "-DOpenEXR_ROOT=${RV_DEPS_OPENEXR_ROOT_DIR}")
 
 IF(NOT RV_TARGET_WINDOWS)
@@ -146,6 +182,15 @@ IF(RV_TARGET_WINDOWS)
 ENDIF()
 
 IF(NOT RV_TARGET_WINDOWS)
+  SET(_oiio_install_command
+      ${_cmake_install_command}
+  )
+  IF(RV_TARGET_LINUX)
+    LIST(APPEND _oiio_install_command COMMAND ${CMAKE_COMMAND} -DMODULE_DIR=${_oiio_python_site_dir} -P
+         ${PROJECT_SOURCE_DIR}/src/build/oiio_python_rpath.cmake
+    )
+  ENDIF()
+
   EXTERNALPROJECT_ADD(
     ${_target}
     URL ${_download_url}
@@ -174,9 +219,11 @@ IF(NOT RV_TARGET_WINDOWS)
             ffmpeg::avcodec
             ffmpeg::swresample
             ZLIB::ZLIB
+            RV_DEPS_PYTHON3
+            ocio::ocio
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
     BUILD_COMMAND ${_cmake_build_command}
-    INSTALL_COMMAND ${_cmake_install_command}
+    INSTALL_COMMAND ${_oiio_install_command}
     BUILD_IN_SOURCE FALSE
     BUILD_ALWAYS FALSE
     BUILD_BYPRODUCTS ${_byproducts}
@@ -232,6 +279,8 @@ ELSE()
             ffmpeg::avcodec
             ffmpeg::swresample
             ZLIB::ZLIB
+            RV_DEPS_PYTHON3
+            ocio::ocio
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
     BUILD_COMMAND ${CMAKE_COMMAND} ${_oiio_build_options}
     INSTALL_COMMAND ${CMAKE_COMMAND} ${_oiio_install_options}
@@ -240,6 +289,13 @@ ELSE()
     USES_TERMINAL_BUILD TRUE
   )
 ENDIF()
+
+ADD_CUSTOM_COMMAND(
+  TARGET ${_target}
+  POST_BUILD
+  COMMENT "Copying the OpenImageIO Python module into '${RV_STAGE_PLUGINS_PYTHON_DIR}/OpenImageIO'."
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${_oiio_python_site_dir} ${RV_STAGE_PLUGINS_PYTHON_DIR}/OpenImageIO
+)
 
 # The macro is using existing _target, _libname, _lib_dir and _bin_dir variabless
 RV_COPY_LIB_BIN_FOLDERS()
