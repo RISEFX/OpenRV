@@ -83,6 +83,8 @@ EXECUTE_PROCESS(
 IF(NOT _pybind11_result EQUAL 0)
   MESSAGE(FATAL_ERROR "OIIO: pybind11 not found in the build Python; install requirements.txt.")
 ENDIF()
+# On Windows the path comes back with backslashes.
+FILE(TO_CMAKE_PATH "${_pybind11_dir}" _pybind11_dir)
 LIST(APPEND _configure_options "-Dpybind11_DIR=${_pybind11_dir}")
 
 LIST(APPEND _configure_options "-DOpenEXR_ROOT=${RV_DEPS_OPENEXR_ROOT_DIR}")
@@ -186,8 +188,14 @@ IF(NOT RV_TARGET_WINDOWS)
       ${_cmake_install_command}
   )
   IF(RV_TARGET_LINUX)
-    LIST(APPEND _oiio_install_command COMMAND ${CMAKE_COMMAND} -DMODULE_DIR=${_oiio_python_site_dir} -P
-         ${PROJECT_SOURCE_DIR}/src/build/oiio_python_rpath.cmake
+    LIST(
+      APPEND
+      _oiio_install_command
+      COMMAND
+      ${CMAKE_COMMAND}
+      -DMODULE_DIR=${_oiio_python_site_dir}
+      -P
+      ${PROJECT_SOURCE_DIR}/src/build/oiio_python_rpath.cmake
     )
   ENDIF()
 

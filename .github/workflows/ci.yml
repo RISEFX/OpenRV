@@ -123,7 +123,8 @@ jobs:
 
       - name: Set PATH environment variable
         run: |
-          echo "export PATH=\"/c/Program Files/CMake/bin:/c/hostedtoolcache/windows/Python/3.11.9/x64:/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
+          # Put the setup-python interpreter first so python3 is not msys2's mingw64 Python (no pip).
+          echo "export PATH=\"/c/Program Files/CMake/bin:$(cygpath -u "$pythonLocation"):/c/msys64/mingw64/bin:$PATH:/c/Strawberry/c/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin\"" >> ~/.bash_profile
         shell: msys2 {0}
 
       - name: Set ACLOCAL_PATH environment variable
@@ -220,6 +221,17 @@ jobs:
         run: |
           cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
         shell: msys2 {0}
+
+      # pwsh, not msys2, to run with a plain Windows environment as on a workstation.
+      # OIIO_LOAD_DLLS_FROM_PATH=0: the DLLs must resolve from RV's bin, not from the runner's PATH.
+      - name: Smoke test the OpenImageIO Python module
+        run: |
+          $env:QT_QPA_PLATFORM = "minimal"
+          $env:OIIO_LOAD_DLLS_FROM_PATH = "0"
+          $env:PYTHONDONTWRITEBYTECODE = "1"
+          & "$PWD/_install/bin/py-interp.exe" src/build/oiio_python_smoke.py "$PWD/_install"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: pwsh
 
       - name: Get the release file name
         run: |
