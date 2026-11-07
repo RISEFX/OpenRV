@@ -165,9 +165,11 @@ jobs:
           tools-only: 'false'
           aqtversion: '==3.2.*'
 
+      # Not --user: RV's own Python 3.10 reads the same user site, and pip would check these
+      # build tools against RV's pinned packages.
       - name: Install Python dependencies
         run: |
-          python3 -m pip install --user --upgrade -r ./requirements.txt
+          python3 -m pip install --upgrade -r ./requirements.txt
         shell: msys2 {0}
 
       - name: Check if the dependencies changed
