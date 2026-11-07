@@ -248,13 +248,13 @@ jobs:
           log=$(ls -t _logs/*.log 2>/dev/null | head -n 1)
           [ -n "$log" ] || exit 0
           # GitHub keeps at most 10 error annotations per step and 4096 characters per annotation.
-          { echo "== error lines"; grep -E '(error|Error|ERROR)[ :]|FAILED|Traceback' "$log" | grep -v -i warning | head -n 30
+          { echo "== error lines"; grep -E -A8 '(error|ERROR)( [A-Z]+[0-9]+)? ?:|CMake Error|FAILED|Traceback|requires .*(incompatible|not installed)' "$log" | head -n 60
             echo "== last lines"; tail -n 80 "$log"; } | cut -c1-300 | tr -d '\r' |
             awk -v title="$(basename "$log")" '
               { gsub(/%/, "%25"); line = $0 "%0A" }
-              length(msg) + length(line) > 4000 { print "::error title=" title "::" msg; msg = ""; if (++n == 10) exit }
+              length(msg) + length(line) > 4000 { print "::error title=" title " " ++n "::" msg; msg = ""; if (n == 10) exit }
               { msg = msg line }
-              END { if (msg != "" && n < 10) print "::error title=" title "::" msg }'
+              END { if (msg != "" && n < 10) print "::error title=" title " " ++n "::" msg }'
         shell: msys2 {0}
 
       - name: Get the release file name
