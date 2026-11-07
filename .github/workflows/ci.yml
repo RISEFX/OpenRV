@@ -191,23 +191,28 @@ jobs:
             ./_build/_deps
           key: windows-dependencies
 
+      # Build output also goes to _logs/, so a failure can be reported as annotations (see below).
       - name: Configure OpenRV
         run: |
+          set -o pipefail
+          mkdir -p _logs
           cmake --version
           export QT_HOME=c:/Qt/${{ matrix.qt-version }}/msvc2019_64
-          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;aac_at;aac_fixed;aac_latm;bink;binkaudio_dct;binkaudio_rdft;dnxhd;dvvideo;prores;qtrle;vp9;vp9_cuvid;vp9_mediacodec;vp9_qsv;vp9_rkmpp;vp9_v4l2m2m" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;aac_mf;dnxhd;dvvideo;prores;qtrle;vp9_qsv;vp9_vaapi" -DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='D:/a/OpenRV/OpenRV/third-party/Blackmagic_DeckLink_SDK_14.1.zip'
+          cmake -B _build -G "Visual Studio 17 2022" -A x64 -DRV_DEPS_WIN_PERL_ROOT=c:/Strawberry/perl/bin -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DRV_DEPS_QT5_LOCATION=$QT_HOME -DRV_VFX_PLATFORM=${{ matrix.vfx-platform }} -DRV_FFMPEG_NON_FREE_DECODERS_TO_ENABLE="aac;aac_at;aac_fixed;aac_latm;bink;binkaudio_dct;binkaudio_rdft;dnxhd;dvvideo;prores;qtrle;vp9;vp9_cuvid;vp9_mediacodec;vp9_qsv;vp9_rkmpp;vp9_v4l2m2m" -DRV_FFMPEG_NON_FREE_ENCODERS_TO_ENABLE="aac;aac_mf;dnxhd;dvvideo;prores;qtrle;vp9_qsv;vp9_vaapi" -DRV_DEPS_BMD_DECKLINK_SDK_ZIP_PATH='D:/a/OpenRV/OpenRV/third-party/Blackmagic_DeckLink_SDK_14.1.zip' 2>&1 | tee _logs/configure.log
         shell: msys2 {0}
 
       - name: Build OpenRV dependencies
         if: steps.cmake-dependencies.outputs.cache-hit != 'true'
         run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v
+          set -o pipefail
+          cmake --build _build --config ${{ matrix.build-type }} --target dependencies --parallel=$(python -c 'import os; print(os.cpu_count())') -v 2>&1 | tee _logs/dependencies.log
         shell: msys2 {0}
         id: build_deps
 
       - name: Build OpenRV main executable
         run: |
-          cmake --build _build --config ${{ matrix.build-type }} --target main_executable --parallel=$(python -c 'import os; print(os.cpu_count())') -v
+          set -o pipefail
+          cmake --build _build --config ${{ matrix.build-type }} --target main_executable --parallel=$(python -c 'import os; print(os.cpu_count())') -v 2>&1 | tee _logs/main_executable.log
         shell: msys2 {0}
 
       - name: Tests
@@ -219,7 +224,8 @@ jobs:
 
       - name: Install OpenRV
         run: |
-          cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }}
+          set -o pipefail
+          cmake --install _build --prefix $(pwd)/_install --config ${{ matrix.build-type }} 2>&1 | tee _logs/install.log
         shell: msys2 {0}
 
       # pwsh, not msys2, to run with a plain Windows environment as on a workstation.
@@ -229,9 +235,27 @@ jobs:
           $env:QT_QPA_PLATFORM = "minimal"
           $env:OIIO_LOAD_DLLS_FROM_PATH = "0"
           $env:PYTHONDONTWRITEBYTECODE = "1"
-          & "$PWD/_install/bin/py-interp.exe" src/build/oiio_python_smoke.py "$PWD/_install"
+          & "$PWD/_install/bin/py-interp.exe" src/build/oiio_python_smoke.py "$PWD/_install" | Tee-Object -FilePath _logs/smoke.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         shell: pwsh
+
+      # The studio proxy blocks the blob storage that serves job logs; annotations come through
+      # api.github.com (`gh api repos/<repo>/check-runs/<job id>/annotations`).
+      - name: Report the failing log as annotations
+        if: failure()
+        run: |
+          set +e +o pipefail
+          log=$(ls -t _logs/*.log 2>/dev/null | head -n 1)
+          [ -n "$log" ] || exit 0
+          # GitHub keeps at most 10 error annotations per step and 4096 characters per annotation.
+          { echo "== error lines"; grep -E '(error|Error|ERROR)[ :]|FAILED|Traceback' "$log" | grep -v -i warning | head -n 30
+            echo "== last lines"; tail -n 80 "$log"; } | cut -c1-300 | tr -d '\r' |
+            awk -v title="$(basename "$log")" '
+              { gsub(/%/, "%25"); line = $0 "%0A" }
+              length(msg) + length(line) > 4000 { print "::error title=" title "::" msg; msg = ""; if (++n == 10) exit }
+              { msg = msg line }
+              END { if (msg != "" && n < 10) print "::error title=" title "::" msg }'
+        shell: msys2 {0}
 
       - name: Get the release file name
         run: |

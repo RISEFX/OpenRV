@@ -99,7 +99,7 @@ if __name__ == "__main__":
         print("OK", flush=True)
         code = 0
     except Exception:
-        traceback.print_exc()
+        traceback.print_exc(file=sys.stdout)
         print("FAILED", flush=True)
         code = 1
     sys.stdout.flush()
