@@ -47,12 +47,32 @@ LIST(APPEND _byproducts ${_byprojects_copy})
 
 # The '_configure_options' list gets reset and initialized in 'RV_CREATE_STANDARD_DEPS_VARIABLES'
 LIST(APPEND _configure_options "-DBUILD_TESTING=OFF")
-LIST(APPEND _configure_options "-DUSE_PYTHON=0") # this on would requireextra pybind11 package
 # OIIO 3.x still calls find_package(Python3) even with USE_PYTHON=0. Point it to our custom Python to prevent finding the system Python (e.g. 3.14 from GitHub
 # runner toolcache).
 LIST(APPEND _configure_options "-DPython3_ROOT_DIR=${RV_DEPS_BASE_DIR}/RV_DEPS_PYTHON3/install")
 LIST(APPEND _configure_options "-DPython3_FIND_STRATEGY=LOCATION")
 LIST(APPEND _configure_options "-DPython3_FIND_REGISTRY=NEVER")
+# The OpenImageIO Python module is built on Linux only; other platforms are untested.
+IF(RV_TARGET_LINUX)
+  # Outside _lib_dir, which is staged into RV's lib directory as a whole: only the copy in RV's Python plugins directory ships.
+  SET(_oiio_python_site_dir
+      "${_install_dir}/python/OpenImageIO"
+  )
+  LIST(APPEND _configure_options "-DUSE_PYTHON=ON")
+  LIST(APPEND _configure_options "-DPYTHON_VERSION=${RV_DEPS_PYTHON_VERSION_SHORT}")
+  LIST(APPEND _configure_options "-DPython3_EXECUTABLE=${RV_DEPS_PYTHON3_EXECUTABLE}")
+  LIST(APPEND _configure_options "-DPYTHON_SITE_DIR=${_oiio_python_site_dir}")
+  # OIIO downloads and builds pybind11 itself.
+  LIST(APPEND _configure_options "-DOpenImageIO_BUILD_MISSING_DEPS=pybind11")
+  SET(_depends_python
+      RV_DEPS_PYTHON3
+  )
+ELSE()
+  LIST(APPEND _configure_options "-DUSE_PYTHON=0")
+  SET(_depends_python
+      ""
+  )
+ENDIF()
 IF(NOT RV_VFX_CY2023)
   LIST(APPEND _configure_options "-DUSE_OCIO=ON")
   LIST(APPEND _configure_options "-DOpenColorIO_ROOT=${RV_DEPS_OCIO_ROOT_DIR}")
@@ -280,6 +300,21 @@ ELSE()
 ENDIF()
 
 IF(NOT RV_TARGET_WINDOWS)
+  SET(_oiio_install_command
+      ${_cmake_install_command}
+  )
+  IF(RV_TARGET_LINUX)
+    LIST(
+      APPEND
+      _oiio_install_command
+      COMMAND
+      ${CMAKE_COMMAND}
+      -DMODULE_DIR=${_oiio_python_site_dir}
+      -P
+      ${PROJECT_SOURCE_DIR}/src/build/oiio_python_rpath.cmake
+    )
+  ENDIF()
+
   EXTERNALPROJECT_ADD(
     ${_target}
     URL ${_download_url}
@@ -306,9 +341,10 @@ IF(NOT RV_TARGET_WINDOWS)
             libraw::raw
             ZLIB::ZLIB
             ${_depends_ocio}
+            ${_depends_python}
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
     BUILD_COMMAND ${_cmake_build_command}
-    INSTALL_COMMAND ${_cmake_install_command}
+    INSTALL_COMMAND ${_oiio_install_command}
     BUILD_IN_SOURCE FALSE
     BUILD_ALWAYS FALSE
     BUILD_BYPRODUCTS ${_byproducts}
@@ -362,6 +398,7 @@ ELSE()
             libraw::raw
             ZLIB::ZLIB
             ${_depends_ocio}
+            ${_depends_python}
     CONFIGURE_COMMAND ${CMAKE_COMMAND} ${_configure_options}
     BUILD_COMMAND ${CMAKE_COMMAND} ${_oiio_build_options}
     INSTALL_COMMAND ${CMAKE_COMMAND} ${_oiio_install_options}
@@ -372,6 +409,15 @@ ELSE()
 ENDIF()
 
 RV_STAGE_DEPENDENCY_LIBS(TARGET ${_target} LIBNAME ${_libname})
+
+IF(RV_TARGET_LINUX)
+  ADD_CUSTOM_COMMAND(
+    TARGET ${_target}
+    POST_BUILD
+    COMMENT "Copying the OpenImageIO Python module into '${RV_STAGE_PLUGINS_PYTHON_DIR}/OpenImageIO'."
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${_oiio_python_site_dir} ${RV_STAGE_PLUGINS_PYTHON_DIR}/OpenImageIO
+  )
+ENDIF()
 
 RV_ADD_IMPORTED_LIBRARY(
   NAME
