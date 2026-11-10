@@ -62,8 +62,17 @@ def test_python_distribution(python_home: str) -> None:
                 ]
             ),
         ]
+        validation_env = None
+        if platform.system() == "Linux":
+            # PySide6 is not standalone on Linux: Qt resolves from RV's lib directory once staged,
+            # so point the loader at Qt here.
+            validation_env = os.environ.copy()
+            validation_env["LD_LIBRARY_PATH"] = os.path.pathsep.join(
+                filter(None, [os.path.join(QT_OUTPUT_DIR, "lib"), validation_env.get("LD_LIBRARY_PATH")])
+            )
+
         print(f"Validating the PySide package with {python_validation_args}")
-        subprocess.run(python_validation_args).check_returncode()
+        subprocess.run(python_validation_args, env=validation_env).check_returncode()
     finally:
         print(f"Moving {tmp_python_home} to {python_home}")
         shutil.move(tmp_python_home, python_home)
@@ -225,12 +234,18 @@ def build() -> None:
         "install",
         f"--qtpaths={os.path.join(QT_OUTPUT_DIR, 'bin', 'qtpaths' + ('.exe' if platform.system() == 'Windows' else ''))}",
         "--ignore-git",
-        "--standalone",
         "--verbose",
         "--verbose-build",
         "--log-level=verbose",
         f"--parallel={os.cpu_count() or 1}",
     ]
+
+    if platform.system() == "Linux":
+        # Load RV's Qt instead of a copy in PySide6/Qt:
+        # from lib/python3.X/site-packages/PySide6, $ORIGIN/../../.. is RV's lib directory.
+        pyside_build_args.append("--rpath=$ORIGIN/../../..")
+    else:
+        pyside_build_args.append("--standalone")
 
     if OPENSSL_OUTPUT_DIR:
         pyside_build_args.append(f"--openssl={os.path.join(OPENSSL_OUTPUT_DIR, 'bin')}")
@@ -254,6 +269,16 @@ def build() -> None:
 
     print(f"Executing {pyside_build_args}")
     subprocess.run(pyside_build_args).check_returncode()
+
+    pyside_folder = glob.glob(os.path.join(python_home, "**", "site-packages", "PySide6"), recursive=True)[0]
+
+    if platform.system() == "Linux":
+        # Even without --standalone, PySide copies Qt metatypes, module JSON files and libexec tools into PySide6/Qt.
+        # RV ships its own libexec tools (QtWebEngineProcess, uic, rcc), and RV's qt.conf points Qt there.
+        pyside_qt_folder = os.path.join(pyside_folder, "Qt")
+        if os.path.isdir(pyside_qt_folder):
+            print(f"Removing {pyside_qt_folder}")
+            shutil.rmtree(pyside_qt_folder)
 
     generator_cleanup_args = python_interpreter_args + [
         "-m",
@@ -285,7 +310,6 @@ def build() -> None:
     subprocess.run(generator_cleanup_args).check_returncode()
 
     if OPENSSL_OUTPUT_DIR and platform.system() == "Windows":
-        pyside_folder = glob.glob(os.path.join(python_home, "**", "site-packages", "PySide6"), recursive=True)[0]
         openssl_libs = glob.glob(os.path.join(OPENSSL_OUTPUT_DIR, "bin", "lib*"))
 
         for lib in openssl_libs:
